@@ -1,0 +1,66 @@
+// api/finance.js — Yahoo Finance proxy for The Observatory
+// Fetches VIX, Gold, BTC, S&P500 server-side, bypassing browser CORS
+// Deploy alongside trends.js, arxiv.js, rss.js on Vercel
+
+const https = require('https');
+
+const SYMBOLS = [
+  { id: 'vix',  symbol: '^VIX'   },
+  { id: 'gold', symbol: 'GC=F'   },
+  { id: 'btc',  symbol: 'BTC-USD' },
+  { id: 'sp',   symbol: '^GSPC'  },
+];
+
+function fetchQuote(symbol) {
+  return new Promise((resolve) => {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`;
+    const req = https.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; Observatory/1.0)',
+        'Accept': 'application/json',
+      },
+      timeout: 8000,
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          const meta   = parsed?.chart?.result?.[0]?.meta;
+          const closes = parsed?.chart?.result?.[0]?.indicators?.quote?.[0]?.close || [];
+          const valid  = closes.filter(v => v != null);
+          const current = meta?.regularMarketPrice || valid[valid.length - 1];
+          const prev    = valid[valid.length - 2];
+          const change  = current && prev ? ((current - prev) / prev * 100) : null;
+          resolve({ ok: true, symbol, current, prev, change });
+        } catch(e) {
+          resolve({ ok: false, symbol, error: e.message });
+        }
+      });
+    });
+    req.on('error', (e) => resolve({ ok: false, symbol, error: e.message }));
+    req.on('timeout', ()  => { req.destroy(); resolve({ ok: false, symbol, error: 'timeout' }); });
+  });
+}
+
+module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Content-Type', 'application/json');
+
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
+  const results = await Promise.all(SYMBOLS.map(s => fetchQuote(s.symbol)));
+
+  const out = {};
+  SYMBOLS.forEach((s, i) => { out[s.id] = results[i]; });
+
+  const liveCount = results.filter(r => r.ok).length;
+
+  res.status(200).json({
+    ok:         liveCount > 0,
+    liveCount,
+    fetchedAt:  new Date().toISOString(),
+    quotes:     out,
+  });
+};
