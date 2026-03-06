@@ -11,9 +11,11 @@ const SYMBOLS = [
   { id: 'sp',   symbol: '^GSPC'  },
 ];
 
-function fetchQuote(symbol) {
+function fetchQuote(symbol, range) {
+  range = range || '5d';
+  const interval = range === '5d' ? '1d' : range === '1mo' ? '1d' : '1wk';
   return new Promise((resolve) => {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5d`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${interval}&range=${range}`;
     const req = https.get(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (compatible; Observatory/1.0)',
@@ -32,7 +34,13 @@ function fetchQuote(symbol) {
           const current = meta?.regularMarketPrice || valid[valid.length - 1];
           const prev    = valid[valid.length - 2];
           const change  = current && prev ? ((current - prev) / prev * 100) : null;
-          resolve({ ok: true, symbol, current, prev, change });
+          // Build time series
+          const timestamps = parsed?.chart?.result?.[0]?.timestamp || [];
+          const series = timestamps.map((ts, i) => ({
+            date: new Date(ts*1000).toISOString().slice(5,10),
+            value: closes[i] ?? null,
+          })).filter(p => p.value != null);
+          resolve({ ok: true, symbol, current, prev, change, series });
         } catch(e) {
           resolve({ ok: false, symbol, error: e.message });
         }
@@ -50,7 +58,8 @@ module.exports = async (req, res) => {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  const results = await Promise.all(SYMBOLS.map(s => fetchQuote(s.symbol)));
+  const range = req.query.range || '5d';
+  const results = await Promise.all(SYMBOLS.map(s => fetchQuote(s.symbol, range)));
 
   const out = {};
   SYMBOLS.forEach((s, i) => { out[s.id] = results[i]; });
