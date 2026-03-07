@@ -63,9 +63,22 @@ module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
 
+  // ?src=URL — fetch a single custom RSS feed (YouTube, SSRN, etc.)
+  if (req.query.src) {
+    try {
+      const xml   = await fetchURL(req.query.src);
+      const items = parseItems(xml);
+      return res.status(200).json({ ok: true, items, fetchedAt: new Date().toISOString() });
+    } catch (e) {
+      return res.status(200).json({ ok: false, items: [], error: e.message });
+    }
+  }
+
+  // Default: fetch all standard feeds
   const results = await Promise.all(
     DEFAULT_FEEDS.map(async (feed) => {
       try {
