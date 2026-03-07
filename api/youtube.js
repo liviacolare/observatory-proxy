@@ -3,7 +3,7 @@
 
 const https = require('https');
 
-const YT_API_KEY = 'AIzaSyDsPps-8gtRxflgYvwWNN5aFELfrMhHFQM';
+const YT_API_KEY = process.env.YOUTUBE_API_KEY;
 
 function fetchJSON(url) {
   return new Promise((resolve, reject) => {
