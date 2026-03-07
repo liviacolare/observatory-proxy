@@ -35,22 +35,44 @@ function fetchURL(url) {
   });
 }
 
+function extractText(block, tag) {
+  return (
+    block.match(new RegExp(`<${tag}[^>]*><!\\[CDATA\\[([\\s\\S]*?)\\]\\]><\\/${tag}>`, 'i'))?.[1] ||
+    block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i'))?.[1] || ''
+  ).replace(/<[^>]+>/g, '').trim();
+}
+
 function parseItems(xml) {
   const items = [];
-  // Match <item>...</item> blocks
-  const itemBlocks = xml.match(/<item[\s>][\s\S]*?<\/item>/gi) || [];
-  for (const block of itemBlocks) {
-    const title   = block.match(/<title[^>]*><!\[CDATA\[(.*?)\]\]><\/title>/i)?.[1]
-                 || block.match(/<title[^>]*>(.*?)<\/title>/i)?.[1] || '';
-    const desc    = block.match(/<description[^>]*><!\[CDATA\[(.*?)\]\]><\/description>/i)?.[1]
-                 || block.match(/<description[^>]*>(.*?)<\/description>/i)?.[1] || '';
-    const pubDate = block.match(/<pubDate[^>]*>(.*?)<\/pubDate>/i)?.[1] || '';
-    const link    = block.match(/<link[^>]*>(.*?)<\/link>/i)?.[1]
-                 || block.match(/<link>(.*?)<\/link>/i)?.[1] || '';
-    if (title.trim()) {
+
+  // Detect format: Atom uses <entry>, RSS uses <item>
+  const isAtom = /<entry[\s>]/i.test(xml);
+  const blockTag = isAtom ? 'entry' : 'item';
+  const blockRegex = new RegExp(`<${blockTag}[\\s>][\\s\\S]*?<\\/${blockTag}>`, 'gi');
+  const blocks = xml.match(blockRegex) || [];
+
+  for (const block of blocks) {
+    const title = extractText(block, 'title');
+
+    // Link: RSS uses <link>url</link>, Atom uses <link href="url"/>
+    const link = isAtom
+      ? (block.match(/<link[^>]+href=["']([^"']+)["']/i)?.[1] || extractText(block, 'link'))
+      : (extractText(block, 'link') || block.match(/<link>(.*?)<\/link>/i)?.[1] || '');
+
+    // Date: RSS uses pubDate, Atom uses published or updated
+    const pubDate = extractText(block, 'pubDate') ||
+                    extractText(block, 'published') ||
+                    extractText(block, 'updated') || '';
+
+    // Description: RSS uses description, Atom uses summary or content
+    const desc = extractText(block, 'description') ||
+                 extractText(block, 'summary') ||
+                 extractText(block, 'content') || '';
+
+    if (title) {
       items.push({
-        title:   title.replace(/<[^>]+>/g,'').trim(),
-        desc:    desc.replace(/<[^>]+>/g,'').trim().slice(0, 200),
+        title:   title.slice(0, 150),
+        desc:    desc.slice(0, 200),
         pubDate: pubDate.trim(),
         link:    link.trim(),
       });
