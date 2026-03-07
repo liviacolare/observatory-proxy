@@ -59,6 +59,16 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const range = req.query.range || '5d';
+
+  // ?symbols=CL%3DF — fetch custom symbols (oil, gas, etc.)
+  if (req.query.symbols) {
+    const customSymbols = req.query.symbols.split(',').slice(0, 4);
+    const results = await Promise.all(customSymbols.map(s => fetchQuote(s.trim(), range)));
+    const out = {};
+    customSymbols.forEach((s, i) => { out[s.trim().replace(/[^a-zA-Z0-9]/g, '_')] = results[i]; });
+    return res.status(200).json({ ok: results.some(r => r.ok), quotes: out, fetchedAt: new Date().toISOString() });
+  }
+
   const results = await Promise.all(SYMBOLS.map(s => fetchQuote(s.symbol, range)));
 
   const out = {};
