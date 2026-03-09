@@ -1,7 +1,9 @@
 {
   "name": "observatory-proxy",
   "version": "1.0.0",
+  "description": "Proxy server for The Observatory dashboard",
   "dependencies": {
-    "google-trends-api": "^4.9.2"
+    "google-trends-api": "^4.9.2",
+    "astronomia": "^4.1.1"
   }
 }
